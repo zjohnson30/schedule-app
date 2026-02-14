@@ -364,13 +364,14 @@
                           ...styles.multiDayBar,
                           background: color,
                           opacity: t.completed ? 0.45 : 0.85,
-                          borderRadius: pos === "start" ? "4px 0 0 4px"
-                            : pos === "end" ? "0 4px 4px 0"
-                            : pos === "single" ? "4px" : "0",
-                          marginLeft: pos === "middle" || pos === "end" ? -5 : 0,
-                          marginRight: pos === "middle" || pos === "start" ? -5 : 0,
+                          borderRadius: pos === "start" ? "3px 0 0 3px"
+                            : pos === "end" ? "0 3px 3px 0"
+                            : pos === "single" ? "3px" : "0",
+                          marginLeft: pos === "start" || pos === "single" ? 4 : -1,
+                          marginRight: pos === "end" || pos === "single" ? 4 : -1,
+                          paddingLeft: pos === "start" || pos === "single" ? 5 : 0,
                         }}>
-                          {pos === "start" || pos === "single" ? t.title : ""}
+                          {pos === "start" || pos === "single" ? t.title : "\u00A0"}
                         </div>
                       );
                     })}
@@ -946,37 +947,38 @@
       },
       // Calendar styles
       calendarGrid: {
-        display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4,
+        display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0,
+        border: "1px solid rgba(212,197,179,0.3)", borderRadius: 12, overflow: "hidden",
       },
       calendarDayHeader: {
         textAlign: "center", fontSize: 11, fontWeight: 700, color: "#9a8a7a",
         textTransform: "uppercase", padding: "8px 0 4px",
       },
       calendarCell: {
-        background: "rgba(255,255,255,0.5)", border: "1px solid rgba(212,197,179,0.2)",
-        borderRadius: 10, padding: "6px 5px", minHeight: 80, cursor: "pointer",
+        background: "rgba(255,255,255,0.5)", border: "0.5px solid rgba(212,197,179,0.25)",
+        borderRadius: 0, padding: "6px 0px 4px 0px", minHeight: 80, cursor: "pointer",
         display: "flex", flexDirection: "column", alignItems: "stretch",
         fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
-        textAlign: "left",
+        textAlign: "left", overflow: "hidden",
       },
       calendarCellOutside: {
         background: "rgba(255,255,255,0.2)", opacity: 0.5,
       },
       calendarCellToday: {
-        border: "1.5px solid #c4b5a3", background: "rgba(58,46,34,0.06)",
+        background: "rgba(58,46,34,0.08)",
       },
       calendarCellSelected: {
-        background: "#3a2e22", border: "1.5px solid #3a2e22",
-        boxShadow: "0 2px 8px rgba(58,46,34,0.25)",
+        background: "#3a2e22",
       },
       calendarCellNum: {
         fontSize: 13, fontWeight: 700, color: "#3a2e22", marginBottom: 3,
+        paddingLeft: 5,
       },
       calendarTaskList: {
         display: "flex", flexDirection: "column", gap: 2, overflow: "hidden",
       },
       calendarTaskItem: {
-        display: "flex", alignItems: "center", gap: 3,
+        display: "flex", alignItems: "center", gap: 3, paddingLeft: 5, paddingRight: 3,
       },
       calendarTaskDot: {
         width: 5, height: 5, minWidth: 5, borderRadius: "50%",
@@ -987,9 +989,9 @@
       },
       // Multi-day bar
       multiDayBar: {
-        padding: "2px 5px", fontSize: 9, fontWeight: 600,
+        padding: "2px 0", fontSize: 9, fontWeight: 600,
         color: "#fff", whiteSpace: "nowrap", overflow: "hidden",
-        textOverflow: "ellipsis", minHeight: 16,
+        textOverflow: "ellipsis", minHeight: 16, lineHeight: "12px",
       },
     };
 
