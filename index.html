@@ -165,6 +165,67 @@
       );
     }
 
+    function CalendarGrid({ monthDates, tasks, selectedDate, filter, onSelectDate }) {
+      const currentMonth = selectedDate.getMonth();
+      return (
+        <div style={{ animation: "fadeIn 0.3s ease" }}>
+          <div style={styles.calendarGrid}>
+            {SHORT_DAYS.map(d => (
+              <div key={d} style={styles.calendarDayHeader}>{d}</div>
+            ))}
+            {monthDates.map((d, i) => {
+              const ds = toLocalDateStr(d);
+              const isCurrentMonth = d.getMonth() === currentMonth;
+              const isToday = isSameDay(d, today);
+              const isSelected = isSameDay(d, selectedDate);
+              const dayTasks = tasks.filter(t => {
+                const matchDate = t.date === ds;
+                const matchFilter = filter === "all" || t.category === filter;
+                return matchDate && matchFilter;
+              }).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+
+              return (
+                <button key={i} onClick={() => onSelectDate(d)}
+                  style={{
+                    ...styles.calendarCell,
+                    ...(isCurrentMonth ? {} : styles.calendarCellOutside),
+                    ...(isToday ? styles.calendarCellToday : {}),
+                    ...(isSelected ? styles.calendarCellSelected : {}),
+                  }}>
+                  <span style={{
+                    ...styles.calendarCellNum,
+                    ...(isSelected ? { color: "#fff" } : {}),
+                    ...(!isCurrentMonth ? { color: "#c4b5a3" } : {}),
+                  }}>{d.getDate()}</span>
+                  <div style={styles.calendarTaskList}>
+                    {dayTasks.slice(0, 3).map(t => (
+                      <div key={t.id} style={styles.calendarTaskItem}>
+                        <span style={{
+                          ...styles.calendarTaskDot,
+                          background: CAT_COLORS[t.category] || "#8a7a6a",
+                        }} />
+                        <span style={{
+                          ...styles.calendarTaskText,
+                          textDecoration: t.completed ? "line-through" : "none",
+                          opacity: t.completed ? 0.5 : 1,
+                          ...(isSelected ? { color: "#e8e0d6" } : {}),
+                        }}>{t.title}</span>
+                      </div>
+                    ))}
+                    {dayTasks.length > 3 && (
+                      <span style={{
+                        fontSize: 9, color: isSelected ? "#ccc" : "#9a8a7a", fontWeight: 600,
+                      }}>+{dayTasks.length - 3} more</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
     function ScheduleTracker() {
       const [tasks, setTasks] = useState([]);
       const [selectedDate, setSelectedDate] = useState(today);
@@ -210,10 +271,40 @@
         });
       };
 
+      const getMonthDates = () => {
+        const year = selectedDate.getFullYear();
+        const month = selectedDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startOffset = firstDay.getDay();
+        const cells = [];
+        // Previous month padding
+        for (let i = startOffset - 1; i >= 0; i--) {
+          const d = new Date(year, month, -i);
+          cells.push(d);
+        }
+        // Current month
+        for (let i = 1; i <= lastDay.getDate(); i++) {
+          cells.push(new Date(year, month, i));
+        }
+        // Next month padding to fill grid (6 rows)
+        while (cells.length < 42) {
+          const d = new Date(year, month + 1, cells.length - startOffset - lastDay.getDate() + 1);
+          cells.push(d);
+        }
+        return cells;
+      };
+
       const filteredTasks = tasks.filter(t => {
-        const matchDate = view === "day"
-          ? t.date === dateStr
-          : getWeekDates().some(d => t.date === toLocalDateStr(d));
+        let matchDate;
+        if (view === "day") {
+          matchDate = t.date === dateStr;
+        } else if (view === "week") {
+          matchDate = getWeekDates().some(d => t.date === toLocalDateStr(d));
+        } else {
+          // calendar — show all tasks for the displayed month grid
+          matchDate = getMonthDates().some(d => t.date === toLocalDateStr(d));
+        }
         const matchFilter = filter === "all" || t.category === filter;
         return matchDate && matchFilter;
       }).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
@@ -237,7 +328,13 @@
 
       const navigateDate = (dir) => {
         const d = new Date(selectedDate);
-        d.setDate(d.getDate() + (view === "week" ? dir * 7 : dir));
+        if (view === "calendar") {
+          d.setMonth(d.getMonth() + dir);
+        } else if (view === "week") {
+          d.setDate(d.getDate() + dir * 7);
+        } else {
+          d.setDate(d.getDate() + dir);
+        }
         setSelectedDate(d);
       };
 
@@ -274,7 +371,9 @@
             <div>
               <h1 style={styles.title}>My Schedule</h1>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                <p style={styles.subtitle}>{formatDate(selectedDate)}</p>
+                <p style={styles.subtitle}>{view === "calendar"
+                  ? selectedDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                  : formatDate(selectedDate)}</p>
                 <span style={{
                   fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
                   background: saveStatus === "saved" ? "#5BAE7C20" : saveStatus === "saving" ? "#E8A33C20" : "#E8453C20",
@@ -296,7 +395,7 @@
               <button style={styles.navArrow} onClick={() => navigateDate(1)}>›</button>
             </div>
             <div style={styles.viewToggle}>
-              {["day", "week"].map(v => (
+              {["day", "week", "calendar"].map(v => (
                 <button key={v} onClick={() => setView(v)}
                   style={{ ...styles.viewBtn, ...(view === v ? styles.viewBtnActive : {}) }}>
                   {v.charAt(0).toUpperCase() + v.slice(1)}
@@ -351,54 +450,64 @@
             </div>
           </div>
 
-          <div style={styles.taskList}>
-            {filteredTasks.length === 0 ? (
-              <div style={styles.emptyState}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-                <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "#5a4a3a" }}>No tasks yet</p>
-                <p style={{ color: "#9a8a7a", marginTop: 4 }}>Tap "New Task" to get started</p>
-              </div>
-            ) : (
-              filteredTasks.map((task, i) => (
-                <div key={task.id}
-                  style={{ ...styles.taskCard, animation: `fadeIn 0.3s ease ${i * 0.05}s both`, opacity: task.completed ? 0.6 : 1 }}>
-                  <div style={styles.taskLeft}>
-                    <button onClick={() => toggleComplete(task.id)} style={styles.checkbox}>
-                      {task.completed && (
-                        <span style={{ ...styles.checkmark, animation: "checkPop 0.3s ease" }}>✓</span>
-                      )}
-                    </button>
-                    <div>
-                      <div style={styles.taskRow}>
-                        <span style={{
-                          ...styles.taskTitle,
-                          textDecoration: task.completed ? "line-through" : "none",
-                          color: task.completed ? "#b0a090" : "#3a2e22",
-                        }}>{task.title}</span>
-                        <span style={{ ...styles.priorityDot, background: PRIORITIES[task.priority] }} />
-                      </div>
-                      <div style={styles.taskMeta}>
-                        {task.time && <span style={styles.taskTime}>⏰ {task.time}</span>}
-                        <span style={{ ...styles.catBadge, background: CAT_COLORS[task.category] + "20", color: CAT_COLORS[task.category] }}>
-                          {task.category}
-                        </span>
-                        {view === "week" && (
-                          <span style={styles.taskDateBadge}>
-                            {new Date(task.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                          </span>
+          {view === "calendar" ? (
+            <CalendarGrid
+              monthDates={getMonthDates()}
+              tasks={tasks}
+              selectedDate={selectedDate}
+              filter={filter}
+              onSelectDate={(d) => { setSelectedDate(d); setView("day"); }}
+            />
+          ) : (
+            <div style={styles.taskList}>
+              {filteredTasks.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                  <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "#5a4a3a" }}>No tasks yet</p>
+                  <p style={{ color: "#9a8a7a", marginTop: 4 }}>Tap "New Task" to get started</p>
+                </div>
+              ) : (
+                filteredTasks.map((task, i) => (
+                  <div key={task.id}
+                    style={{ ...styles.taskCard, animation: `fadeIn 0.3s ease ${i * 0.05}s both`, opacity: task.completed ? 0.6 : 1 }}>
+                    <div style={styles.taskLeft}>
+                      <button onClick={() => toggleComplete(task.id)} style={styles.checkbox}>
+                        {task.completed && (
+                          <span style={{ ...styles.checkmark, animation: "checkPop 0.3s ease" }}>✓</span>
                         )}
+                      </button>
+                      <div>
+                        <div style={styles.taskRow}>
+                          <span style={{
+                            ...styles.taskTitle,
+                            textDecoration: task.completed ? "line-through" : "none",
+                            color: task.completed ? "#b0a090" : "#3a2e22",
+                          }}>{task.title}</span>
+                          <span style={{ ...styles.priorityDot, background: PRIORITIES[task.priority] }} />
+                        </div>
+                        <div style={styles.taskMeta}>
+                          {task.time && <span style={styles.taskTime}>⏰ {task.time}</span>}
+                          <span style={{ ...styles.catBadge, background: CAT_COLORS[task.category] + "20", color: CAT_COLORS[task.category] }}>
+                            {task.category}
+                          </span>
+                          {view === "week" && (
+                            <span style={styles.taskDateBadge}>
+                              {new Date(task.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                        {task.notes && <p style={styles.taskNotes}>{task.notes}</p>}
                       </div>
-                      {task.notes && <p style={styles.taskNotes}>{task.notes}</p>}
+                    </div>
+                    <div style={styles.taskActions}>
+                      <button style={styles.actionBtn} onClick={() => { setEditTask(task); setShowAddModal(true); }}>✏️</button>
+                      <button style={styles.actionBtn} onClick={() => deleteTask(task.id)}>🗑️</button>
                     </div>
                   </div>
-                  <div style={styles.taskActions}>
-                    <button style={styles.actionBtn} onClick={() => { setEditTask(task); setShowAddModal(true); }}>✏️</button>
-                    <button style={styles.actionBtn} onClick={() => deleteTask(task.id)}>🗑️</button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
 
           {tasks.length > 0 && (
             <div style={{ textAlign: "center", marginTop: 24, animation: "fadeIn 0.5s ease" }}>
@@ -595,6 +704,47 @@
         flex: 1, padding: "10px 18px", borderRadius: 12, border: "1.5px solid #d4c5b3",
         background: "none", fontSize: 14, fontWeight: 600, cursor: "pointer",
         color: "#6a5a4a", fontFamily: "'DM Sans', sans-serif",
+      },
+      // Calendar styles
+      calendarGrid: {
+        display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4,
+      },
+      calendarDayHeader: {
+        textAlign: "center", fontSize: 11, fontWeight: 700, color: "#9a8a7a",
+        textTransform: "uppercase", padding: "8px 0 4px",
+      },
+      calendarCell: {
+        background: "rgba(255,255,255,0.5)", border: "1px solid rgba(212,197,179,0.2)",
+        borderRadius: 10, padding: "6px 5px", minHeight: 80, cursor: "pointer",
+        display: "flex", flexDirection: "column", alignItems: "stretch",
+        fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+        textAlign: "left",
+      },
+      calendarCellOutside: {
+        background: "rgba(255,255,255,0.2)", opacity: 0.5,
+      },
+      calendarCellToday: {
+        border: "1.5px solid #c4b5a3", background: "rgba(58,46,34,0.06)",
+      },
+      calendarCellSelected: {
+        background: "#3a2e22", border: "1.5px solid #3a2e22",
+        boxShadow: "0 2px 8px rgba(58,46,34,0.25)",
+      },
+      calendarCellNum: {
+        fontSize: 13, fontWeight: 700, color: "#3a2e22", marginBottom: 3,
+      },
+      calendarTaskList: {
+        display: "flex", flexDirection: "column", gap: 2, overflow: "hidden",
+      },
+      calendarTaskItem: {
+        display: "flex", alignItems: "center", gap: 3,
+      },
+      calendarTaskDot: {
+        width: 5, height: 5, minWidth: 5, borderRadius: "50%",
+      },
+      calendarTaskText: {
+        fontSize: 10, color: "#5a4a3a", whiteSpace: "nowrap",
+        overflow: "hidden", textOverflow: "ellipsis",
       },
     };
 
