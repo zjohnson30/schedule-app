@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Schedule</title>
+  <style>
+    html, body, #root {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(170deg, #FDF6EE 0%, #F5ECE1 40%, #EDE3D5 100%);
+    }
+  </style>
+  <script>
+    // Polyfill window.storage using localStorage
+    window.storage = {
+      get: function(key) {
+        return Promise.resolve(
+          localStorage.getItem(key) !== null
+            ? { value: localStorage.getItem(key) }
+            : null
+        );
+      },
+      set: function(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch(e) {
+          console.error("Storage error:", e);
+        }
+        return Promise.resolve();
+      }
+    };
+  </script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect } = React;
+
+    const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const PRIORITIES = { high: "#E8453C", medium: "#E8A33C", low: "#5BAE7C" };
+    const CATEGORIES = ["Work", "Personal", "Health", "Errands", "Learning", "Social"];
+    const CAT_COLORS = {
+      Work: "#4A6FA5", Personal: "#9B6B9E", Health: "#5BAE7C",
+      Errands: "#E8A33C", Learning: "#4AAFAF", Social: "#E8453C"
+    };
+
+    const today = new Date();
+
+    function formatDate(d) {
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function isSameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    function toLocalDateStr(d) {
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+
+    const DEFAULT_TASKS = [
+      { id: "demo1", title: "Morning workout", time: "07:00", category: "Health", priority: "high", completed: false, date: toLocalDateStr(today), notes: "" },
+      { id: "demo2", title: "Team standup", time: "09:30", category: "Work", priority: "medium", completed: false, date: toLocalDateStr(today), notes: "Prepare sprint update" },
+      { id: "demo3", title: "Grocery shopping", time: "17:00", category: "Errands", priority: "low", completed: false, date: toLocalDateStr(today), notes: "" },
+    ];
+
+    async function loadTasks() {
+      try {
+        const result = await window.storage.get("schedule-tasks");
+        return result ? JSON.parse(result.value) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    async function saveTasks(tasks) {
+      try {
+        await window.storage.set("schedule-tasks", JSON.stringify(tasks));
+      } catch (e) {
+        console.error("Failed to save tasks:", e);
+      }
+    }
+
+    function TaskModal({ task, defaultDate, onSave, onClose }) {
+      const [title, setTitle] = useState(task?.title || "");
+      const [time, setTime] = useState(task?.time || "");
+      const [category, setCategory] = useState(task?.category || "Work");
+      const [priority, setPriority] = useState(task?.priority || "medium");
+      const [date, setDate] = useState(task?.date || defaultDate);
+      const [notes, setNotes] = useState(task?.notes || "");
+
+      const handleSubmit = () => {
+        if (!title.trim()) return;
+        onSave({ title: title.trim(), time, category, priority, date, notes: notes.trim() });
+      };
+
+      return (
+        <div style={styles.overlay} onClick={onClose}>
+          <div style={{ ...styles.modal, animation: "scaleIn 0.25s ease" }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>{task ? "Edit Task" : "New Task"}</h2>
+
+            <label style={styles.label}>Title *</label>
+            <input style={styles.input} value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="What needs to be done?" autoFocus />
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={styles.label}>Date</label>
+                <input type="date" style={styles.input} value={date} onChange={e => setDate(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={styles.label}>Time</label>
+                <input type="time" style={styles.input} value={time} onChange={e => setTime(e.target.value)} />
+              </div>
+            </div>
+
+            <label style={styles.label}>Category</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {CATEGORIES.map(c => (
+                <button key={c} onClick={() => setCategory(c)}
+                  style={{
+                    ...styles.filterChip,
+                    fontSize: 13,
+                    ...(category === c ? { background: CAT_COLORS[c], borderColor: CAT_COLORS[c], color: "#fff" } : {}),
+                  }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            <label style={styles.label}>Priority</label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {Object.entries(PRIORITIES).map(([key, color]) => (
+                <button key={key} onClick={() => setPriority(key)}
+                  style={{
+                    ...styles.filterChip, fontSize: 13, textTransform: "capitalize",
+                    ...(priority === key ? { background: color, borderColor: color, color: "#fff" } : {}),
+                  }}>
+                  {key}
+                </button>
+              ))}
+            </div>
+
+            <label style={styles.label}>Notes</label>
+            <textarea style={{ ...styles.input, minHeight: 70, resize: "vertical", fontFamily: "'DM Sans', sans-serif" }}
+              value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional details..." />
+
+            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+              <button style={styles.cancelBtn} onClick={onClose}>Cancel</button>
+              <button style={{ ...styles.addBtn, flex: 1, justifyContent: "center" }} onClick={handleSubmit}>
+                {task ? "Save Changes" : "Add Task"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ScheduleTracker() {
+      const [tasks, setTasks] = useState([]);
+      const [selectedDate, setSelectedDate] = useState(today);
+      const [view, setView] = useState("day");
+      const [showAddModal, setShowAddModal] = useState(false);
+      const [editTask, setEditTask] = useState(null);
+      const [filter, setFilter] = useState("all");
+      const [loading, setLoading] = useState(true);
+      const [saveStatus, setSaveStatus] = useState("saved");
+
+      useEffect(() => {
+        (async () => {
+          const stored = await loadTasks();
+          if (stored && stored.length > 0) {
+            setTasks(stored);
+          } else {
+            setTasks(DEFAULT_TASKS);
+            await saveTasks(DEFAULT_TASKS);
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      useEffect(() => {
+        if (loading) return;
+        setSaveStatus("saving");
+        const timeout = setTimeout(async () => {
+          await saveTasks(tasks);
+          setSaveStatus("saved");
+        }, 400);
+        return () => clearTimeout(timeout);
+      }, [tasks, loading]);
+
+      const dateStr = selectedDate.getFullYear() + "-" + String(selectedDate.getMonth() + 1).padStart(2, "0") + "-" + String(selectedDate.getDate()).padStart(2, "0");
+
+      const getWeekDates = () => {
+        const start = new Date(selectedDate);
+        start.setDate(start.getDate() - start.getDay());
+        return Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(start);
+          d.setDate(d.getDate() + i);
+          return d;
+        });
+      };
+
+      const filteredTasks = tasks.filter(t => {
+        const matchDate = view === "day"
+          ? t.date === dateStr
+          : getWeekDates().some(d => t.date === toLocalDateStr(d));
+        const matchFilter = filter === "all" || t.category === filter;
+        return matchDate && matchFilter;
+      }).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+
+      const completedCount = filteredTasks.filter(t => t.completed).length;
+      const totalCount = filteredTasks.length;
+      const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+
+      const toggleComplete = (id) => {
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+      };
+
+      const deleteTask = (id) => {
+        setTasks(prev => prev.filter(t => t.id !== id));
+      };
+
+      const clearAllTasks = async () => {
+        setTasks([]);
+        await saveTasks([]);
+      };
+
+      const navigateDate = (dir) => {
+        const d = new Date(selectedDate);
+        d.setDate(d.getDate() + (view === "week" ? dir * 7 : dir));
+        setSelectedDate(d);
+      };
+
+      if (loading) {
+        return (
+          <div style={{ ...styles.container, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <style>{`
+              @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap');
+              @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+            `}</style>
+            <div style={{ textAlign: "center", animation: "pulse 1.5s ease infinite" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+              <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "#5a4a3a" }}>Loading your schedule...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={styles.container}>
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap');
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            ::-webkit-scrollbar { width: 6px; }
+            ::-webkit-scrollbar-thumb { background: #c4b5a3; border-radius: 3px; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+            @keyframes progressGrow { from { width: 0%; } }
+            @keyframes checkPop { 0% { transform: scale(0); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+          `}</style>
+
+          <header style={styles.header}>
+            <div>
+              <h1 style={styles.title}>My Schedule</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                <p style={styles.subtitle}>{formatDate(selectedDate)}</p>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
+                  background: saveStatus === "saved" ? "#5BAE7C20" : saveStatus === "saving" ? "#E8A33C20" : "#E8453C20",
+                  color: saveStatus === "saved" ? "#5BAE7C" : saveStatus === "saving" ? "#E8A33C" : "#E8453C",
+                }}>
+                  {saveStatus === "saved" ? "✓ Saved" : saveStatus === "saving" ? "Saving..." : "Error"}
+                </span>
+              </div>
+            </div>
+            <button style={styles.addBtn} onClick={() => { setEditTask(null); setShowAddModal(true); }}>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>+</span> New Task
+            </button>
+          </header>
+
+          <div style={styles.navBar}>
+            <div style={styles.navLeft}>
+              <button style={styles.navArrow} onClick={() => navigateDate(-1)}>‹</button>
+              <button style={styles.todayBtn} onClick={() => setSelectedDate(today)}>Today</button>
+              <button style={styles.navArrow} onClick={() => navigateDate(1)}>›</button>
+            </div>
+            <div style={styles.viewToggle}>
+              {["day", "week"].map(v => (
+                <button key={v} onClick={() => setView(v)}
+                  style={{ ...styles.viewBtn, ...(view === v ? styles.viewBtnActive : {}) }}>
+                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.weekStrip}>
+            {getWeekDates().map((d, i) => {
+              const isToday = isSameDay(d, today);
+              const isSelected = isSameDay(d, selectedDate);
+              const hasTasks = tasks.some(t => t.date === toLocalDateStr(d));
+              return (
+                <button key={i} onClick={() => { setSelectedDate(d); setView("day"); }}
+                  style={{
+                    ...styles.dayPill,
+                    ...(isSelected ? styles.dayPillSelected : {}),
+                    ...(isToday && !isSelected ? styles.dayPillToday : {}),
+                  }}>
+                  <span style={styles.dayLabel}>{SHORT_DAYS[d.getDay()]}</span>
+                  <span style={{ ...styles.dayNum, ...(isSelected ? { color: "#fff" } : {}) }}>{d.getDate()}</span>
+                  {hasTasks && <span style={{ ...styles.dayDot, ...(isSelected ? { background: "#fff" } : {}) }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={styles.filterRow}>
+            <button onClick={() => setFilter("all")}
+              style={{ ...styles.filterChip, ...(filter === "all" ? styles.filterChipActive : {}) }}>
+              All
+            </button>
+            {CATEGORIES.map(c => (
+              <button key={c} onClick={() => setFilter(c)}
+                style={{
+                  ...styles.filterChip,
+                  ...(filter === c ? { ...styles.filterChipActive, background: CAT_COLORS[c], borderColor: CAT_COLORS[c] } : {}),
+                }}>
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <div style={styles.progressContainer}>
+            <div style={styles.progressHeader}>
+              <span style={styles.progressLabel}>{completedCount} of {totalCount} tasks done</span>
+              <span style={styles.progressPct}>{Math.round(progress)}%</span>
+            </div>
+            <div style={styles.progressTrack}>
+              <div style={{ ...styles.progressBar, width: `${progress}%`, animation: "progressGrow 0.8s ease-out" }} />
+            </div>
+          </div>
+
+          <div style={styles.taskList}>
+            {filteredTasks.length === 0 ? (
+              <div style={styles.emptyState}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "#5a4a3a" }}>No tasks yet</p>
+                <p style={{ color: "#9a8a7a", marginTop: 4 }}>Tap "New Task" to get started</p>
+              </div>
+            ) : (
+              filteredTasks.map((task, i) => (
+                <div key={task.id}
+                  style={{ ...styles.taskCard, animation: `fadeIn 0.3s ease ${i * 0.05}s both`, opacity: task.completed ? 0.6 : 1 }}>
+                  <div style={styles.taskLeft}>
+                    <button onClick={() => toggleComplete(task.id)} style={styles.checkbox}>
+                      {task.completed && (
+                        <span style={{ ...styles.checkmark, animation: "checkPop 0.3s ease" }}>✓</span>
+                      )}
+                    </button>
+                    <div>
+                      <div style={styles.taskRow}>
+                        <span style={{
+                          ...styles.taskTitle,
+                          textDecoration: task.completed ? "line-through" : "none",
+                          color: task.completed ? "#b0a090" : "#3a2e22",
+                        }}>{task.title}</span>
+                        <span style={{ ...styles.priorityDot, background: PRIORITIES[task.priority] }} />
+                      </div>
+                      <div style={styles.taskMeta}>
+                        {task.time && <span style={styles.taskTime}>⏰ {task.time}</span>}
+                        <span style={{ ...styles.catBadge, background: CAT_COLORS[task.category] + "20", color: CAT_COLORS[task.category] }}>
+                          {task.category}
+                        </span>
+                        {view === "week" && (
+                          <span style={styles.taskDateBadge}>
+                            {new Date(task.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                      {task.notes && <p style={styles.taskNotes}>{task.notes}</p>}
+                    </div>
+                  </div>
+                  <div style={styles.taskActions}>
+                    <button style={styles.actionBtn} onClick={() => { setEditTask(task); setShowAddModal(true); }}>✏️</button>
+                    <button style={styles.actionBtn} onClick={() => deleteTask(task.id)}>🗑️</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {tasks.length > 0 && (
+            <div style={{ textAlign: "center", marginTop: 24, animation: "fadeIn 0.5s ease" }}>
+              <button onClick={clearAllTasks} style={{
+                background: "none", border: "1px solid #d4c5b3", borderRadius: 8,
+                padding: "6px 16px", fontSize: 12, color: "#9a8a7a", cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+                Clear All Tasks
+              </button>
+            </div>
+          )}
+
+          {showAddModal && (
+            <TaskModal
+              task={editTask}
+              defaultDate={dateStr}
+              onSave={(task) => {
+                if (editTask) {
+                  setTasks(prev => prev.map(t => t.id === editTask.id ? { ...editTask, ...task } : t));
+                } else {
+                  setTasks(prev => [...prev, { ...task, id: generateId(), completed: false }]);
+                }
+                setShowAddModal(false);
+                setEditTask(null);
+              }}
+              onClose={() => { setShowAddModal(false); setEditTask(null); }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    const styles = {
+      container: {
+        fontFamily: "'DM Sans', sans-serif",
+        maxWidth: 640,
+        margin: "0 auto",
+        padding: "24px 16px",
+        minHeight: "100vh",
+        background: "linear-gradient(170deg, #FDF6EE 0%, #F5ECE1 40%, #EDE3D5 100%)",
+        color: "#3a2e22",
+      },
+      header: {
+        display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+        marginBottom: 20, animation: "fadeIn 0.4s ease",
+      },
+      title: {
+        fontFamily: "'DM Serif Display', serif", fontSize: 32, fontWeight: 400, color: "#2a1e12", letterSpacing: "-0.5px",
+      },
+      subtitle: { fontSize: 14, color: "#8a7a6a" },
+      addBtn: {
+        display: "flex", alignItems: "center", gap: 6,
+        background: "#3a2e22", color: "#FDF6EE", border: "none",
+        padding: "10px 18px", borderRadius: 12, fontSize: 14, fontWeight: 600,
+        cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+        transition: "transform 0.15s, box-shadow 0.15s",
+        boxShadow: "0 2px 8px rgba(58,46,34,0.2)",
+      },
+      navBar: {
+        display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16,
+      },
+      navLeft: { display: "flex", alignItems: "center", gap: 8 },
+      navArrow: {
+        background: "rgba(58,46,34,0.08)", border: "none", borderRadius: 8,
+        width: 34, height: 34, fontSize: 20, cursor: "pointer", color: "#5a4a3a",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: "'DM Sans', sans-serif",
+      },
+      todayBtn: {
+        background: "none", border: "1.5px solid #c4b5a3", borderRadius: 8,
+        padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+        color: "#5a4a3a", fontFamily: "'DM Sans', sans-serif",
+      },
+      viewToggle: {
+        display: "flex", background: "rgba(58,46,34,0.06)", borderRadius: 10, padding: 3,
+      },
+      viewBtn: {
+        background: "none", border: "none", padding: "6px 16px", borderRadius: 8,
+        fontSize: 13, fontWeight: 500, cursor: "pointer", color: "#8a7a6a",
+        fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s",
+      },
+      viewBtnActive: {
+        background: "#fff", color: "#3a2e22", boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+      },
+      weekStrip: {
+        display: "flex", gap: 6, marginBottom: 16, justifyContent: "space-between",
+      },
+      dayPill: {
+        flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+        padding: "8px 4px", borderRadius: 12, border: "none", cursor: "pointer",
+        background: "rgba(255,255,255,0.5)", fontFamily: "'DM Sans', sans-serif",
+        transition: "all 0.2s", position: "relative",
+      },
+      dayPillSelected: {
+        background: "#3a2e22", boxShadow: "0 2px 10px rgba(58,46,34,0.3)",
+      },
+      dayPillToday: {
+        background: "rgba(58,46,34,0.1)", border: "1.5px solid #c4b5a3",
+      },
+      dayLabel: { fontSize: 11, fontWeight: 600, color: "#9a8a7a", textTransform: "uppercase" },
+      dayNum: { fontSize: 16, fontWeight: 700, color: "#3a2e22" },
+      dayDot: {
+        width: 5, height: 5, borderRadius: "50%", background: "#E8A33C", marginTop: 2,
+      },
+      filterRow: {
+        display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap",
+      },
+      filterChip: {
+        background: "rgba(255,255,255,0.6)", border: "1.5px solid #d4c5b3",
+        borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 600,
+        cursor: "pointer", color: "#6a5a4a", fontFamily: "'DM Sans', sans-serif",
+        transition: "all 0.2s",
+      },
+      filterChipActive: {
+        background: "#3a2e22", color: "#FDF6EE", borderColor: "#3a2e22",
+      },
+      progressContainer: {
+        background: "rgba(255,255,255,0.6)", borderRadius: 14, padding: "14px 16px",
+        marginBottom: 16, backdropFilter: "blur(10px)",
+      },
+      progressHeader: {
+        display: "flex", justifyContent: "space-between", marginBottom: 8,
+      },
+      progressLabel: { fontSize: 13, fontWeight: 500, color: "#6a5a4a" },
+      progressPct: { fontSize: 13, fontWeight: 700, color: "#3a2e22" },
+      progressTrack: {
+        height: 8, background: "rgba(58,46,34,0.08)", borderRadius: 4, overflow: "hidden",
+      },
+      progressBar: {
+        height: "100%", background: "linear-gradient(90deg, #5BAE7C, #4AAFAF)",
+        borderRadius: 4, transition: "width 0.5s ease",
+      },
+      taskList: { display: "flex", flexDirection: "column", gap: 10 },
+      taskCard: {
+        background: "rgba(255,255,255,0.7)", borderRadius: 14, padding: "14px 16px",
+        display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+        backdropFilter: "blur(10px)", border: "1px solid rgba(212,197,179,0.3)",
+        transition: "all 0.2s",
+      },
+      taskLeft: { display: "flex", gap: 12, flex: 1 },
+      checkbox: {
+        width: 24, height: 24, minWidth: 24, borderRadius: 7, border: "2px solid #c4b5a3",
+        background: "none", cursor: "pointer", display: "flex", alignItems: "center",
+        justifyContent: "center", marginTop: 2, transition: "all 0.2s",
+      },
+      checkmark: { fontSize: 14, fontWeight: 700, color: "#5BAE7C" },
+      taskRow: { display: "flex", alignItems: "center", gap: 8 },
+      taskTitle: { fontSize: 15, fontWeight: 600, transition: "all 0.2s" },
+      priorityDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+      taskMeta: { display: "flex", gap: 8, marginTop: 4, alignItems: "center", flexWrap: "wrap" },
+      taskTime: { fontSize: 12, color: "#8a7a6a" },
+      catBadge: {
+        fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6,
+      },
+      taskDateBadge: {
+        fontSize: 11, color: "#8a7a6a", background: "rgba(58,46,34,0.06)",
+        padding: "2px 8px", borderRadius: 6,
+      },
+      taskNotes: { fontSize: 12, color: "#8a7a6a", marginTop: 4, fontStyle: "italic" },
+      taskActions: { display: "flex", gap: 4 },
+      actionBtn: {
+        background: "none", border: "none", cursor: "pointer", fontSize: 15,
+        padding: 4, borderRadius: 6, transition: "background 0.2s",
+      },
+      emptyState: {
+        textAlign: "center", padding: "48px 20px",
+        animation: "fadeIn 0.5s ease",
+      },
+      overlay: {
+        position: "fixed", inset: 0, background: "rgba(42,30,18,0.4)",
+        backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
+        justifyContent: "center", zIndex: 1000, padding: 16,
+      },
+      modal: {
+        background: "#FDF6EE", borderRadius: 20, padding: 24, width: "100%",
+        maxWidth: 460, maxHeight: "90vh", overflow: "auto",
+        boxShadow: "0 20px 60px rgba(42,30,18,0.3)",
+      },
+      modalTitle: {
+        fontFamily: "'DM Serif Display', serif", fontSize: 24, marginBottom: 20, color: "#2a1e12",
+      },
+      label: {
+        display: "block", fontSize: 12, fontWeight: 600, color: "#6a5a4a",
+        marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px",
+      },
+      input: {
+        width: "100%", padding: "10px 14px", borderRadius: 10,
+        border: "1.5px solid #d4c5b3", background: "rgba(255,255,255,0.6)",
+        fontSize: 14, color: "#3a2e22", outline: "none", marginBottom: 16,
+        fontFamily: "'DM Sans', sans-serif",
+      },
+      cancelBtn: {
+        flex: 1, padding: "10px 18px", borderRadius: 12, border: "1.5px solid #d4c5b3",
+        background: "none", fontSize: 14, fontWeight: 600, cursor: "pointer",
+        color: "#6a5a4a", fontFamily: "'DM Sans', sans-serif",
+      },
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<ScheduleTracker />);
+  </script>
+</body>
+</html>
